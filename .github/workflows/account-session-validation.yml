@@ -35,7 +35,7 @@ jobs:
       - name: Download the pinned module graph and record checksums
         run: |
           GOFLAGS= go mod download all
-          git diff --exit-code -- go.mod
+          git diff --exit-code -- go.mod go.sum
           mkdir -p validation-results
           cp go.sum validation-results/go.sum
       - name: Targeted session and login-controller tests

@@ -29,7 +29,7 @@ func tokenTestDatabase(t *testing.T) (*gorm.DB, *model.User) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		DisableForeignKeyConstraintWhenMigrating: true,
-		Logger:                                  logger.Default.LogMode(logger.Silent),
+		Logger:                                   logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		t.Fatal(err)
