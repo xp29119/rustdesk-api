@@ -55,6 +55,12 @@ jobs:
           ref: 3998c2a9213fcd047252776d0f0db33e6717026c
           path: .admin-source
           persist-credentials: false
+      - name: Apply the narrow admin session fixes
+        if: matrix.go == '1.27.3'
+        run: |
+          git -C .admin-source apply --check "$PWD/patches/0001-explicit-admin-logout.patch"
+          git -C .admin-source apply "$PWD/patches/0001-explicit-admin-logout.patch"
+          git -C .admin-source diff --check
       - name: Setup the frontend build runtime
         if: matrix.go == '1.27.3'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -84,6 +90,7 @@ jobs:
           printf '%s\n' '2.7-secure-sessions' > dist/resources/version
           cp LICENSE dist/LICENSE-api
           cp .admin-source/LICENSE dist/LICENSE-admin
+          cp patches/0001-explicit-admin-logout.patch dist/ADMIN_SOURCE_PATCH.diff
           git -C .admin-source rev-parse HEAD > dist/ADMIN_SOURCE_COMMIT
           node --version > dist/NODE_VERSION
           printf '%s\n' 'Validated API and original admin UI candidate. Production configuration, TLS and real-client acceptance are still required. No database or credentials are included.' > dist/README.txt
@@ -92,7 +99,7 @@ jobs:
         if: always()
         run: |
           mkdir -p validation-results
-          gofmt -d service/user.go service/user_token_test.go http/controller/admin/login.go http/controller/admin/user.go http/controller/api/login.go http/controller/api/login_options_test.go http/controller/api/ouath.go > validation-results/gofmt.diff
+          gofmt -d http/router/admin.go service/user.go service/user_token_test.go http/controller/admin/login.go http/controller/admin/user.go http/controller/api/login.go http/controller/api/login_options_test.go http/controller/api/ouath.go > validation-results/gofmt.diff
           cat validation-results/gofmt.diff
           test ! -s validation-results/gofmt.diff
       - name: Upload session validation evidence

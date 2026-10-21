@@ -1,0 +1,54 @@
+diff --git a/src/api/user.js b/src/api/user.js
+--- a/src/api/user.js
++++ b/src/api/user.js
+@@ -5,6 +5,13 @@
+     url: '/login',
+     method: 'post',
+     data,
++  })
++}
++
++export function logout () {
++  return request({
++    url: '/logout',
++    method: 'post',
+   })
+ }
+ 
+diff --git a/src/layout/components/setting/index.vue b/src/layout/components/setting/index.vue
+--- a/src/layout/components/setting/index.vue
++++ b/src/layout/components/setting/index.vue
+@@ -55,6 +55,7 @@
+ 
+ <script setup>
+   import { useUserStore } from '@/store/user'
++  import { logout as logoutSession } from '@/api/user'
+   import { useAppStore } from '@/store/app'
+   import changePwdDialog from '@/components/changePwdDialog.vue'
+   import { ref } from 'vue'
+@@ -66,7 +67,13 @@
+   const user = userStore
+   const appStore = useAppStore()
+ 
+-  const logout = () => {
++  const logout = async () => {
++    try {
++      await logoutSession()
++    } catch (_) {
++      // The shared request handler already shows the error; allow a retry.
++      return
++    }
+     userStore.logout()
+     window.location.reload()
+   }
+diff --git a/src/store/user.js b/src/store/user.js
+--- a/src/store/user.js
++++ b/src/store/user.js
+@@ -42,7 +42,6 @@
+ 
+     async login (form) {
+       const res = await login(form).catch(e => e)
+-      console.log('login', res)
+       if (!res.code) {
+         useAppStore().loadConfig()
+         const userData = res.data

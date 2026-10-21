@@ -147,7 +147,11 @@ func (ct *Login) Logout(c *gin.Context) {
 	u := service.AllService.UserService.CurUser(c)
 	token, ok := c.Get("token")
 	if ok {
-		service.AllService.UserService.Logout(u, token.(string))
+		if err := service.AllService.UserService.Logout(u, token.(string)); err != nil {
+			global.Logger.Error("Failed to revoke login session")
+			response.Fail(c, 101, response.TranslateMsg(c, "SystemError"))
+			return
+		}
 	}
 	response.Success(c, nil)
 }

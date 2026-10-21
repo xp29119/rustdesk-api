@@ -148,6 +148,7 @@ def exercise(binary, resources, state, checks, with_admin=False):
                 require(time.monotonic() < deadline, 'api_readiness_timeout')
                 time.sleep(0.1)
         require(options.get('register') is False, 'registration_not_disabled')
+        require(isinstance(options.get('ops'), list), 'admin_login_options_not_array')
         checks.append('fresh_process_has_only_owned_ipv4_loopback_listener')
         require(http('GET', '/api/login-options') == ['common-oidc/[]'], 'native_login_options_not_empty_array')
         checks.append('native_login_options_empty_array_contract')
@@ -263,6 +264,10 @@ def exercise(binary, resources, state, checks, with_admin=False):
             http('POST', '/api/logout', {}, token)
             http('POST', '/api/currentUser', {}, token, status=401)
         checks.append('single_device_logout_isolated_and_revoked_tokens_rejected')
+        admin_api('/logout', {}, admin_token)
+        require(http('GET', '/api/admin/user/current', token=admin_token, admin=True).get('code') == 403,
+                'admin_logout_not_revoked')
+        checks.append('admin_logout_revokes_session')
         listener(proc.pid, binary, state, port)
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
