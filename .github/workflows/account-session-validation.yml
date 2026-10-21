@@ -94,7 +94,7 @@ jobs:
           git -C .admin-source rev-parse HEAD > dist/ADMIN_SOURCE_COMMIT
           node --version > dist/NODE_VERSION
           printf '%s\n' 'Validated API and original admin UI candidate. Production configuration, TLS and real-client acceptance are still required. No database or credentials are included.' > dist/README.txt
-          (cd dist && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum) > dist/SHA256SUMS
+          (cd dist && find . -type f ! -path '*/.*' ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum) > dist/SHA256SUMS
       - name: Check changed Go source formatting
         if: always()
         run: |
