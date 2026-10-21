@@ -47,6 +47,10 @@ jobs:
           git rev-parse HEAD > dist/SOURCE_COMMIT
           go version > dist/GO_VERSION
           sha256sum dist/apimain > dist/SHA256SUMS
+      - name: Real HTTP login, device and address-book smoke
+        run: |
+          set -o pipefail
+          python3 validation/http-smoke.py --binary "$PWD/dist/apimain" --resources "$PWD/resources" | tee validation-results/http-smoke.json
       - name: Check changed Go source formatting
         if: always()
         run: |
@@ -54,7 +58,7 @@ jobs:
           gofmt -d service/user.go service/user_token_test.go http/controller/admin/login.go http/controller/admin/user.go http/controller/api/login.go http/controller/api/ouath.go > validation-results/gofmt.diff
           cat validation-results/gofmt.diff
           test ! -s validation-results/gofmt.diff
-      - name: Upload formatting evidence
+      - name: Upload session validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
