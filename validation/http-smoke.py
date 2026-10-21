@@ -2,7 +2,7 @@
 """Real HTTP smoke for a CI-built Linux API; no downloads, external hosts or Web UI."""
 import argparse
 import ctypes
-import http.client
+from http.client import HTTPConnection
 import json
 import os
 from pathlib import Path
@@ -18,6 +18,7 @@ import stat
 import subprocess
 import tempfile
 import time
+import traceback
 from urllib.parse import quote, urlencode
 import uuid
 
@@ -115,7 +116,7 @@ def exercise(binary, resources, state, checks):
             headers = {'Content-Type': 'application/json', 'Accept-Language': 'en'}
             if token:
                 headers['api-token' if admin else 'Authorization'] = token if admin else 'Bearer '+token
-            connection = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
+            connection = HTTPConnection('127.0.0.1', port, timeout=3)
             try:
                 connection.request(method, route, None if body is None else json.dumps(body), headers)
                 response = connection.getresponse()
@@ -148,6 +149,8 @@ def exercise(binary, resources, state, checks):
                 time.sleep(0.1)
         require(options.get('register') is False, 'registration_not_disabled')
         checks.append('fresh_process_has_only_owned_ipv4_loopback_listener')
+        require(http('GET', '/api/login-options') == ['common-oidc/[]'], 'native_login_options_not_empty_array')
+        checks.append('native_login_options_empty_array_contract')
         match = re.search(r'Admin Password Is:\s*([A-Za-z0-9]{8})\b',
                           (state/'runtime/console.log').read_text(errors='replace'))
         require(match is not None, 'fresh_initial_admin_password_not_found')
@@ -283,6 +286,8 @@ def main():
         report.update(result='passed', process_stopped=True, temporary_data_removed=True)
     except Exception as exc:
         report['error'] = str(exc) if isinstance(exc, SmokeFailure) else type(exc).__name__
+        report['error_at'] = [{'file': Path(frame.filename).name, 'line': frame.lineno, 'function': frame.name}
+                              for frame in traceback.extract_tb(exc.__traceback__)]
         print(json.dumps(report), flush=True)
         return 1
     print(json.dumps(report), flush=True)

@@ -55,7 +55,7 @@ jobs:
         if: always()
         run: |
           mkdir -p validation-results
-          gofmt -d service/user.go service/user_token_test.go http/controller/admin/login.go http/controller/admin/user.go http/controller/api/login.go http/controller/api/ouath.go > validation-results/gofmt.diff
+          gofmt -d service/user.go service/user_token_test.go http/controller/admin/login.go http/controller/admin/user.go http/controller/api/login.go http/controller/api/login_options_test.go http/controller/api/ouath.go > validation-results/gofmt.diff
           cat validation-results/gofmt.diff
           test ! -s validation-results/gofmt.diff
       - name: Upload session validation evidence
