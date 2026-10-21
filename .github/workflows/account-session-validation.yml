@@ -32,6 +32,12 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: true
+      - name: Download the pinned module graph and record checksums
+        run: |
+          GOFLAGS= go mod download all
+          git diff --exit-code -- go.mod
+          mkdir -p validation-results
+          cp go.sum validation-results/go.sum
       - name: Targeted session and login-controller tests
         run: go test -race -count=1 ./service ./http/controller/api ./http/controller/admin
       - name: Compile the actual API executable
@@ -42,6 +48,7 @@ jobs:
           go version > dist/GO_VERSION
           sha256sum dist/apimain > dist/SHA256SUMS
       - name: Check changed Go source formatting
+        if: always()
         run: |
           mkdir -p validation-results
           gofmt -d service/user.go service/user_token_test.go http/controller/admin/login.go http/controller/admin/user.go http/controller/api/login.go http/controller/api/ouath.go > validation-results/gofmt.diff
