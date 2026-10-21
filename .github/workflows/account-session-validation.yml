@@ -47,10 +47,47 @@ jobs:
           git rev-parse HEAD > dist/SOURCE_COMMIT
           go version > dist/GO_VERSION
           sha256sum dist/apimain > dist/SHA256SUMS
+      - name: Checkout the pinned existing admin frontend
+        if: matrix.go == '1.27.3'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: lejianwen/rustdesk-api-web
+          ref: 3998c2a9213fcd047252776d0f0db33e6717026c
+          path: .admin-source
+          persist-credentials: false
+      - name: Setup the frontend build runtime
+        if: matrix.go == '1.27.3'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.23.3'
+      - name: Build the original admin UI from its lockfile
+        if: matrix.go == '1.27.3'
+        working-directory: .admin-source
+        run: |
+          npm ci --include=dev --no-audit --no-fund
+          NODE_ENV=production npm run build
+          git diff --exit-code -- package.json package-lock.json
+          test -s dist/index.html
+          mkdir -p ../resources/admin
+          cp -a dist/. ../resources/admin/
       - name: Real HTTP login, device and address-book smoke
         run: |
           set -o pipefail
-          python3 validation/http-smoke.py --binary "$PWD/dist/apimain" --resources "$PWD/resources" | tee validation-results/http-smoke.json
+          admin_args=()
+          if [ "${{ matrix.go }}" = '1.27.3' ]; then admin_args+=(--with-admin); fi
+          python3 validation/http-smoke.py --binary "$PWD/dist/apimain" --resources "$PWD/resources" "${admin_args[@]}" | tee validation-results/http-smoke.json
+      - name: Package the API with its verified admin resources
+        if: matrix.go == '1.27.3'
+        run: |
+          mkdir -p dist/resources
+          cp -a resources/admin resources/i18n resources/templates resources/public dist/resources/
+          printf '%s\n' '2.7-secure-sessions' > dist/resources/version
+          cp LICENSE dist/LICENSE-api
+          cp .admin-source/LICENSE dist/LICENSE-admin
+          git -C .admin-source rev-parse HEAD > dist/ADMIN_SOURCE_COMMIT
+          node --version > dist/NODE_VERSION
+          printf '%s\n' 'Validated API and original admin UI candidate. Production configuration, TLS and real-client acceptance are still required. No database or credentials are included.' > dist/README.txt
+          (cd dist && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum) > dist/SHA256SUMS
       - name: Check changed Go source formatting
         if: always()
         run: |

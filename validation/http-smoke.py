@@ -58,7 +58,7 @@ def listener(pid, binary, state, port):
     require(found == [('tcp', f'0100007F:{port:04X}')], 'unexpected_tcp_listener')
 
 
-def exercise(binary, resources, state, checks):
+def exercise(binary, resources, state, checks, with_admin=False):
     proc = None
     db = None
     started = time.monotonic()
@@ -68,7 +68,7 @@ def exercise(binary, resources, state, checks):
     signal.signal(signal.SIGINT, interrupted)
     signal.setitimer(signal.ITIMER_REAL, 45)
     try:
-        for name in ('templates', 'i18n'):
+        for name in ('templates', 'i18n') + (('admin',) if with_admin else ()):
             require((resources/name).is_dir(), 'required_resource_directory_missing')
             shutil.copytree(resources/name, state/'resources'/name)
         for name in ('conf', 'runtime/cache', 'data', 'resources/public/upload'):
@@ -151,6 +151,16 @@ def exercise(binary, resources, state, checks):
         checks.append('fresh_process_has_only_owned_ipv4_loopback_listener')
         require(http('GET', '/api/login-options') == ['common-oidc/[]'], 'native_login_options_not_empty_array')
         checks.append('native_login_options_empty_array_contract')
+        if with_admin:
+            page = http('GET', '/_admin/', raw=True).decode()
+            require('<div id="app"></div>' in page, 'admin_mount_missing')
+            assets = re.findall(r'(?:src|href)="(\./static/[^"?#]+)"', page)
+            require(any(x.endswith('.js') for x in assets) and any(x.endswith('.css') for x in assets),
+                    'compiled_admin_assets_missing')
+            for asset in assets:
+                require('..' not in asset[2:].split('/'), 'unexpected_admin_asset_path')
+                require(bool(http('GET', '/_admin/'+asset[2:], raw=True)), 'admin_asset_empty')
+            checks.append('compiled_admin_index_and_assets_served')
         match = re.search(r'Admin Password Is:\s*([A-Za-z0-9]{8})\b',
                           (state/'runtime/console.log').read_text(errors='replace'))
         require(match is not None, 'fresh_initial_admin_password_not_found')
@@ -273,6 +283,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--resources', type=Path, required=True)
+    parser.add_argument('--with-admin', action='store_true')
     args = parser.parse_args()
     require(platform.system() == 'Linux' and os.geteuid() != 0, 'requires_linux_non_root_ci_user')
     require(args.binary.is_absolute() and args.resources.is_absolute(), 'absolute_input_paths_required')
@@ -282,7 +293,7 @@ def main():
     report = {'result': 'failed', 'real_http': True, 'real_client_executed': False, 'checks': []}
     try:
         with tempfile.TemporaryDirectory(prefix='rd-api-ci-') as folder:
-            report['runtime_seconds'] = exercise(binary, resources, Path(folder).resolve(), report['checks'])
+            report['runtime_seconds'] = exercise(binary, resources, Path(folder).resolve(), report['checks'], args.with_admin)
         report.update(result='passed', process_stopped=True, temporary_data_removed=True)
     except Exception as exc:
         report['error'] = str(exc) if isinstance(exc, SmokeFailure) else type(exc).__name__
