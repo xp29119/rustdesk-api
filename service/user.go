@@ -1,7 +1,11 @@
 package service
 
 import (
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"io"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -14,6 +18,8 @@ import (
 )
 
 type UserService struct {
+	// nil uses the operating system random source; overridden only by package tests.
+	tokenReader io.Reader
 }
 
 // InfoById 根据用户id取用户信息
@@ -86,16 +92,32 @@ func (us *UserService) InfoByAccessToken(token string) (*model.User, *model.User
 }
 
 // GenerateToken 生成token
-func (us *UserService) GenerateToken(u *model.User) string {
+func (us *UserService) GenerateToken(u *model.User) (string, error) {
 	if len(Jwt.Key) > 0 {
-		return Jwt.GenerateToken(u.Id)
+		token := Jwt.GenerateToken(u.Id)
+		if token == "" {
+			return "", errors.New("failed to generate signed session token")
+		}
+		return token, nil
 	}
-	return utils.Md5(u.Username + time.Now().String())
+	random := cryptorand.Reader
+	// The upstream Service embeds a nil *UserService, so preserve nil-receiver use.
+	if us != nil && us.tokenReader != nil {
+		random = us.tokenReader
+	}
+	var raw [32]byte
+	if _, err := io.ReadFull(random, raw[:]); err != nil {
+		return "", fmt.Errorf("generate opaque session token: %w", err)
+	}
+	return hex.EncodeToString(raw[:]), nil
 }
 
 // Login 登录
-func (us *UserService) Login(u *model.User, llog *model.LoginLog) *model.UserToken {
-	token := us.GenerateToken(u)
+func (us *UserService) Login(u *model.User, llog *model.LoginLog) (*model.UserToken, error) {
+	token, err := us.GenerateToken(u)
+	if err != nil {
+		return nil, err
+	}
 	ut := &model.UserToken{
 		UserId:     u.Id,
 		Token:      token,
@@ -103,13 +125,15 @@ func (us *UserService) Login(u *model.User, llog *model.LoginLog) *model.UserTok
 		DeviceId:   llog.DeviceId,
 		ExpiredAt:  us.UserTokenExpireTimestamp(),
 	}
-	DB.Create(ut)
+	if err := DB.Create(ut).Error; err != nil {
+		return nil, fmt.Errorf("persist session token: %w", err)
+	}
 	llog.UserTokenId = ut.UserId
 	DB.Create(llog)
 	if llog.Uuid != "" {
 		AllService.PeerService.UuidBindUserId(llog.DeviceId, llog.Uuid, u.Id)
 	}
-	return ut
+	return ut, nil
 }
 
 // CurUser 获取当前用户
@@ -486,14 +510,18 @@ func (us *UserService) getAdminUserCount() int64 {
 	return count
 }
 
-// UserTokenExpireTimestamp 生成用户token过期时间
-func (us *UserService) UserTokenExpireTimestamp() int64 {
+func (us *UserService) userTokenExpireDuration() time.Duration {
 	exp := Config.App.TokenExpire
 	if exp == 0 {
 		//默认七天
-		exp = 604800
+		exp = 7 * 24 * time.Hour
 	}
-	return time.Now().Add(exp).Unix()
+	return exp
+}
+
+// UserTokenExpireTimestamp 生成用户token过期时间
+func (us *UserService) UserTokenExpireTimestamp() int64 {
+	return time.Now().Add(us.userTokenExpireDuration()).Unix()
 }
 
 func (us *UserService) RefreshAccessToken(ut *model.UserToken) {
@@ -502,7 +530,7 @@ func (us *UserService) RefreshAccessToken(ut *model.UserToken) {
 }
 
 func (us *UserService) AutoRefreshAccessToken(ut *model.UserToken) {
-	if ut.ExpiredAt-time.Now().Unix() < Config.App.TokenExpire.Milliseconds()/3000 {
+	if ut.ExpiredAt-time.Now().Unix() < us.userTokenExpireDuration().Milliseconds()/3000 {
 		us.RefreshAccessToken(ut)
 	}
 }

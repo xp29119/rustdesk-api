@@ -1,0 +1,64 @@
+name: Account session validation
+
+on:
+  push:
+    branches: [codex/secure-sessions-2.7]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: account-sessions-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.23.10', '1.27.3']
+    env:
+      CGO_ENABLED: '1'
+      GOTOOLCHAIN: local
+      GOFLAGS: -mod=readonly
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+      - name: Targeted session and login-controller tests
+        run: go test -race -count=1 ./service ./http/controller/api ./http/controller/admin
+      - name: Compile the actual API executable
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags '-s -w' -o dist/apimain ./cmd/apimain.go
+          git rev-parse HEAD > dist/SOURCE_COMMIT
+          go version > dist/GO_VERSION
+          sha256sum dist/apimain > dist/SHA256SUMS
+      - name: Check changed Go source formatting
+        run: |
+          mkdir -p validation-results
+          gofmt -d service/user.go service/user_token_test.go http/controller/admin/login.go http/controller/admin/user.go http/controller/api/login.go http/controller/api/ouath.go > validation-results/gofmt.diff
+          cat validation-results/gofmt.diff
+          test ! -s validation-results/gofmt.diff
+      - name: Upload formatting evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: api-validation-go${{ matrix.go }}-${{ github.sha }}
+          path: validation-results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload validated API candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: api-2.7-secure-sessions-linux-amd64-go${{ matrix.go }}-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14

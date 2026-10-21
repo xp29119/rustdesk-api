@@ -337,12 +337,17 @@ func (ct *User) Register(c *gin.Context) {
 		return
 	}
 	// 注册成功后自动登录
-	ut := service.AllService.UserService.Login(u, &model.LoginLog{
+	ut, err := service.AllService.UserService.Login(u, &model.LoginLog{
 		UserId: u.Id,
 		Client: model.LoginLogClientWebAdmin,
 		Uuid:   "",
 		Ip:     c.ClientIP(),
 		Type:   model.LoginLogTypeAccount,
 	})
+	if err != nil {
+		global.Logger.Error("Failed to create login session")
+		response.Fail(c, 101, response.TranslateMsg(c, "SystemError"))
+		return
+	}
 	responseLoginSuccess(c, u, ut.Token)
 }
